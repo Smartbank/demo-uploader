@@ -3,16 +3,46 @@ var multer = require('multer');
 var spawn   = require('child_process').exec;
 
 var args = process.argv.slice(2);
+var uploadDir = __dirname + '/' + args[0];
+console.log('Uploading files to', uploadDir);
 var storage = multer.diskStorage({
-    destination: __dirname + args[0],
+    destination: uploadDir,
     filename: function(req, file, cb) {
         cb(null, file.originalname)
     }
 });
-
 var upload = multer({storage: storage});
-
 var app = express();
+
+var output, status;
+
+function startDeploy() {
+    var deployCommand = spawn(__dirname + '/' + args[1]);
+    output = [];
+    status = 'in-progress';
+
+    deployCommand.on('error', function(err) {
+        console.log(err);
+        output.push(err);
+    });
+
+    deployCommand.stdout.on('data', function(chunk) {
+        console.log(chunk);
+        output.push(chunk);
+    });
+
+    deployCommand.on('close', function(code) {
+        if (code === 0) {
+            console.log('Deploy Script Completed!');
+            output.push('Deploy Script Completed!\n');
+            status = 'success';
+        } else {
+            console.log('Deploy Scripted Failed!');
+            output.push('Deploy Scripted Failed!\n');
+            status = 'failed';
+        }
+    });
+}
 
 app.route('/upload').post(upload.fields([
     {
@@ -21,28 +51,17 @@ app.route('/upload').post(upload.fields([
         name: 'source'
     },
 ]), function(req, res, next) {
-    var command = spawn(__dirname + '/' + args[1]);
-    var output = [];
+    console.log('File uploaded, starting deploy');
+    startDeploy();
+    res.status(200).send('File uploaded, starting deploy');
+});
 
-    command.on('error', function(err) {
-        res.send(err);
-    });
-
-    command.stdout.on('data', function(chunk) {
-        output.push(chunk);
-    });
-
-    command.on('close', function(code) {
-        if (code === 0) {
-            res.status(200)
-            output.forEach(function (chunk) {
-                res.send(chunk);
-            });
-        } else {
-            res.status(500); // when the script fails, generate a Server Error HTTP response
-        }
-        res.end();
-    });
+app.route('/status').get(function (req, res) {
+    if(status !== 'in-progress') {
+        res.status(status === 'success' ? 200 : 500).send(output);
+    } else {
+        res.status(400).send('Status: ' + status);
+    }
 });
 
 var server = app.listen(7777, function() {
