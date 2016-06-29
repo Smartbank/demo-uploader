@@ -31,14 +31,19 @@ function startDeploy() {
         output.push(chunk);
     });
 
-    deployCommand.on('close', function(code) {
+    deployCommand.stderr.on('data', function(chunk) {
+        console.log(chunk);
+        output.push(chunk);
+    });
+
+    deployCommand.on('close', function(code, signal) {
         if (code === 0) {
             console.log('Deploy Script Completed!');
             output.push('Deploy Script Completed!\n');
             status = 'success';
         } else {
-            console.log('Deploy Scripted Failed!');
-            output.push('Deploy Scripted Failed!\n');
+            console.log('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal);
+            output.push('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal + '\n');
             status = 'failed';
         }
     });
@@ -58,7 +63,7 @@ app.route('/upload').post(upload.fields([
 
 app.route('/status').get(function (req, res) {
     if(status !== 'in-progress') {
-        res.status(status === 'success' ? 200 : 500).send(output);
+        res.status(status === 'success' ? 200 : 500).send(output.join(''));
     } else {
         res.status(400).send('Status: ' + status);
     }
