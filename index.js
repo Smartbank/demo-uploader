@@ -15,42 +15,38 @@ var upload = multer({storage: storage});
 var app = express();
 
 var output, status;
-var deployPromise = new Promise(resolve => resolve());
 
 function startDeploy() {
+    var deployCommand = spawn(__dirname + '/' + args[1]);
+    output = [];
+    status = 'in-progress';
 
-    deployPromise = new Promise((resolve, reject) => {
-        var deployCommand = spawn(__dirname + '/' + args[1]);
-        output = [];
-        status = 'in-progress';
+    deployCommand.on('error', function(err) {
+        console.log(err);
+        output.push(err);
+    });
 
-        deployCommand.on('error', err => {
-            console.log(err);
-            output.push(err);
-        });
+    deployCommand.stdout.on('data', function(chunk) {
+        console.log(chunk);
+        output.push(chunk);
+    });
 
-        deployCommand.stdout.on('data', chunk => {
-            console.log(chunk);
-            output.push(chunk);
-        });
+    deployCommand.stderr.on('data', function(chunk) {
+        console.log(chunk);
+        output.push(chunk);
+    });
 
-        deployCommand.stderr.on('data', chunk => {
-            console.log(chunk);
-            output.push(chunk);
-        });
-
-        deployCommand.on('close', (code, signal) => {
-            if (code === 0) {
-                console.log('Deploy Script Completed!');
-                output.push('Deploy Script Completed!\n');
-                status = 'success';
-            } else {
-                console.log('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal);
-                output.push('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal + '\n');
-                status = 'failed';
-            }
-        });
-    }).catch(() => {});
+    deployCommand.on('close', function(code, signal) {
+        if (code === 0) {
+            console.log('Deploy Script Completed!');
+            output.push('Deploy Script Completed!\n');
+            status = 'success';
+        } else {
+            console.log('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal);
+            output.push('Deploy Scripted Failed!, with code: ' + code + ' and signal: ' + signal + '\n');
+            status = 'failed';
+        }
+    });
 }
 
 app.route('/upload').post(upload.fields([
@@ -65,14 +61,14 @@ app.route('/upload').post(upload.fields([
     res.status(200).send('File uploaded, starting deploy');
 });
 
-app.route('/status').get((req, res) => {
-    console.log('status called, awaiting deploy promise');
-    deployPromise.then(() => {
-        console.log('deploy promise resolved, resolving request');
-        res.status(status === 'success' ? 200 : 500).send(output && output.join(''));
-    });
+app.route('/status').get(function (req, res) {
+    if(status !== 'in-progress') {
+        res.status(status === 'success' ? 200 : 500).send(output.join(''));
+    } else {
+        res.status(400).send('Status: ' + status);
+    }
 });
 
-var server = app.listen(7777, () => {
+var server = app.listen(7777, function() {
     console.log('Listening on port %d', server.address().port);
 });
